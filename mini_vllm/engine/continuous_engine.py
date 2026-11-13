@@ -24,6 +24,7 @@ class ContinuousBatchEngine:
         self.requests = {}
         self.max_tokens = {}
         self.results = {}
+        self.kv_caches = {}
 
     def add_request(
         self,
@@ -46,6 +47,7 @@ class ContinuousBatchEngine:
 
         self.requests[request_id] = req
         self.max_tokens[request_id] = max_tokens
+        self.kv_caches[request_id] = None
 
         self.scheduler.add_request(req)
 
@@ -61,12 +63,13 @@ class ContinuousBatchEngine:
         for req, count in batch:
             end = req.num_computed_tokens + count
 
-            # Reference implementation:
-            # recompute the full processed prefix.
-            sequences.append(req.token_ids[:end])
+            sequences.append(req.token_ids[req.num_computed_tokens:end])
 
         # One model forward call for the entire batch.
-        logits = self.runner.forward_batch(sequences)
+        logits, caches = self.runner.forward_cached_batch(
+            sequences,
+            [self.kv_caches[req.request_id] for req, _ in batch],
+        )
 
         # Only commit after successful execution.
         self.scheduler.complete_step(batch)
@@ -75,7 +78,8 @@ class ContinuousBatchEngine:
 
         generated = {}
 
-        for (req, count), token_id in zip(batch, sampled):
+        for (req, count), token_id, cache in zip(batch, sampled, caches):
+            self.kv_caches[req.request_id] = cache
 
             # Don't sample during incomplete prefill.
             if req.num_computed_tokens < req.prompt_len:
@@ -111,3 +115,4 @@ class ContinuousBatchEngine:
 
         del self.requests[req.request_id]
         del self.max_tokens[req.request_id]
+        del self.kv_caches[req.request_id]
