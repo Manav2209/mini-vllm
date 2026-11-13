@@ -4,10 +4,10 @@ class Request:
     def __init__(
         self,
         request_id: str,
-        prompt_token: list[int],
+        prompt_tokens: list[int],
     ):
         #Your implementation 
-        self.request_id = request.id
+        self.request_id = request_id
         self.prompt_len = len(prompt_tokens)
         self.token_ids = list(prompt_tokens)
 
@@ -25,5 +25,5 @@ class Request:
         return self.token_ids[self.prompt_len:]
 
 
-    def append_tokens(self , token_id: int) -> None:
+    def append_token(self, token_id: int) -> None:
         self.token_ids.append(token_id)
