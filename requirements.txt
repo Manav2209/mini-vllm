@@ -1,0 +1,12 @@
+# Python 3.12; CPU reference path. On Linux install the CPU Torch wheel first:
+# python -m pip install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0
+transformers==5.23.0
+fastapi==0.115.12
+uvicorn==0.34.2
+httpx==0.28.1
+pydantic==2.14.3
+numpy==2.5.4
+matplotlib==3.10.1
+psutil==7.0.0
+ruff==0.11.8

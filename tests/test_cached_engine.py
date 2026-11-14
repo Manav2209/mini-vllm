@@ -5,13 +5,17 @@ from mini_vllm.engine.cache_engine import CachedContinuousEngine
 
 class FakeRunner:
     eos_token_id = -1
+
     def __init__(self):
         self.calls = []
         self.batches = []
+
     def encode(self, prompt):
         return list(range(1, int(prompt) + 1))
+
     def decode(self, tokens):
         return ",".join(map(str, tokens))
+
     def forward_batch(self, chunks, caches):
         self.batches.append((chunks, caches))
         self.calls.extend((list(chunk), cache) for chunk, cache in zip(chunks, caches))
@@ -24,18 +28,18 @@ class EngineTests(unittest.TestCase):
         engine = CachedContinuousEngine(runner, token_budget=3)
         engine.add_request("A", "5", max_new_tokens=2)
         self.assertEqual(engine.step(), {})
-        self.assertEqual(runner.calls[0], ([1,2,3], None))
+        self.assertEqual(runner.calls[0], ([1, 2, 3], None))
         engine.add_request("B", "2", max_new_tokens=1)
         outputs = engine.step()
         self.assertEqual(outputs, {"A": 99})
 
         # A gets its remaining prompt chunk, using the previously cached prefix.
-        self.assertEqual(runner.calls[1], ([4,5], [1,2,3]))
-        self.assertEqual(engine.step(), {"B":99, "A":99})
-        self.assertEqual(engine.results, {"A":"99,99", "B":"99"})
-        
+        self.assertEqual(runner.calls[1], ([4, 5], [1, 2, 3]))
+        self.assertEqual(engine.step(), {"B": 99, "A": 99})
+        self.assertEqual(engine.results, {"A": "99,99", "B": "99"})
+
         # A's first decode step only processes its newly generated token.
-        self.assertIn(([99], [1,2,3,4,5]), runner.calls)
+        self.assertIn(([99], [1, 2, 3, 4, 5]), runner.calls)
 
     def test_bad_inputs(self):
         engine = CachedContinuousEngine(FakeRunner())
@@ -94,7 +98,8 @@ class EngineTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "model failed"):
                 engine.step()
         self.assertEqual(
-            [(req.computed, req.cache, req.generated) for req in engine.active], before,
+            [(req.computed, req.cache, req.generated) for req in engine.active],
+            before,
         )
         self.assertEqual(engine.step(), {"A": 99, "B": 99})
         self.assertFalse(engine.requests)
@@ -107,6 +112,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(engine.step(), {"A": 99})
         self.assertEqual(engine.step(), {"B": 99})
         self.assertEqual(engine.step(), {"C": 99})
+
 
 if __name__ == "__main__":
     unittest.main()

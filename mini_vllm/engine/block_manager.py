@@ -1,4 +1,3 @@
-
 from collections import deque
 
 from .request import Request
@@ -16,6 +15,7 @@ class BlockManager:
         self.on_memory_pressure = None
         self.allocated_blocks: set[int] = set()
         self.ref_counts: dict[int, int] = {}
+        self.shared_blocks: set[int] = set()
 
     def allocate(self, num_blocks: int) -> list[int]:
         if num_blocks < 0:
@@ -26,16 +26,12 @@ class BlockManager:
                 self.on_memory_pressure(needed)
         if len(self.free_blocks) < num_blocks:
             raise RuntimeError("Not enough free KV blocks")
-        block_ids = [
-            self.free_blocks.popleft()
-            for _ in range(num_blocks)
-        ]
+        block_ids = [self.free_blocks.popleft() for _ in range(num_blocks)]
         self.allocated_blocks.update(block_ids)
         for block_id in block_ids:
             self.ref_counts[block_id] = 1
         return block_ids
 
-        
     def free(self, block_ids: list[int]) -> None:
         """
         Release one reference per block.
@@ -58,11 +54,8 @@ class BlockManager:
                 self.allocated_blocks.remove(block_id)
                 self.free_blocks.append(block_id)
 
-        
     def reserve(self, request: Request) -> None:
-        required_blocks = (
-            len(request.token_ids) + self.block_size - 1
-        ) // self.block_size
+        required_blocks = (len(request.token_ids) + self.block_size - 1) // self.block_size
 
         additional_blocks = required_blocks - len(request.block_ids)
 
@@ -71,7 +64,6 @@ class BlockManager:
 
         new_blocks = self.allocate(additional_blocks)
         request.block_ids.extend(new_blocks)
-
 
     def acquire(self, block_ids: list[int]) -> None:
         """
@@ -87,12 +79,10 @@ class BlockManager:
         for block_id in block_ids:
             self.ref_counts[block_id] += 1
 
-
     @property
     def num_free_blocks(self) -> int:
         return len(self.free_blocks)
-        
-    
+
     def reserve_for(
         self,
         request: Request,
@@ -101,9 +91,7 @@ class BlockManager:
         if total_tokens < 0:
             raise ValueError("Token count cannot be negative")
 
-        required = (
-            total_tokens + self.block_size - 1
-        ) // self.block_size
+        required = (total_tokens + self.block_size - 1) // self.block_size
 
         additional = required - len(request.block_ids)
 
@@ -112,4 +100,3 @@ class BlockManager:
 
         new_blocks = self.allocate(additional)
         request.block_ids.extend(new_blocks)
-

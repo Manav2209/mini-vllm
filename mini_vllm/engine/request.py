@@ -1,12 +1,10 @@
-
-
 class Request:
     def __init__(
         self,
         request_id: str,
         prompt_tokens: list[int],
     ):
-        #Your implementation 
+        # Your implementation
         self.request_id = request_id
         self.prompt_len = len(prompt_tokens)
         self.token_ids = list(prompt_tokens)
@@ -14,17 +12,15 @@ class Request:
         self.num_computed_tokens = 0
         self.num_cached_tokens = 0
         self.block_ids: list[int] = []
-        
+        self.block_hashes: list[str] = []
 
     @property
     def num_tokens(self) -> int:
         return len(self.token_ids)
 
-
-    @property 
+    @property
     def output_tokens(self) -> list[int]:
-        return self.token_ids[self.prompt_len:]
-
+        return self.token_ids[self.prompt_len :]
 
     def append_token(self, token_id: int) -> None:
         self.token_ids.append(token_id)

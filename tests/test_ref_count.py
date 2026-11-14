@@ -1,4 +1,3 @@
-
 import unittest
 
 from mini_vllm.engine.block_manager import BlockManager
@@ -6,7 +5,6 @@ from mini_vllm.engine.prefix_cache import PrefixCache
 
 
 class TestReferenceCounting(unittest.TestCase):
-
     def test_shared_blocks(self):
         manager = BlockManager(
             num_blocks=4,

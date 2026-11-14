@@ -3,6 +3,7 @@
 The model-facing adapter gathers dense attention inputs on CPU. KV ownership,
 allocation and persistent writes belong to this pool, not DynamicCache.
 """
+
 import torch
 from transformers.cache_utils import Cache, CacheLayerMixin
 
@@ -11,8 +12,13 @@ from .block_manager import BlockManager
 
 class PagedKVCache:
     def __init__(
-        self, block_manager: BlockManager, num_layers: int, num_kv_heads: int,
-        head_dim: int, dtype=torch.float32, device="cpu",
+        self,
+        block_manager: BlockManager,
+        num_layers: int,
+        num_kv_heads: int,
+        head_dim: int,
+        dtype=torch.float32,
+        device="cpu",
     ):
         if min(num_layers, num_kv_heads, head_dim) <= 0:
             raise ValueError("KV tensor dimensions must be positive")
@@ -36,7 +42,10 @@ class PagedKVCache:
         if count:
             first = start // self.block_size
             last = (start + count - 1) // self.block_size
-            if any(block not in self.block_manager.allocated_blocks for block in block_table[first:last + 1]):
+            if any(
+                block not in self.block_manager.allocated_blocks
+                for block in block_table[first : last + 1]
+            ):
                 raise ValueError("Block is not allocated")
         positions = torch.arange(start, start + count, device=self.keys.device)
         table = torch.tensor(block_table, dtype=torch.long, device=self.keys.device)
@@ -51,11 +60,16 @@ class PagedKVCache:
         """Scatter [1, heads, tokens, head_dim] states into physical blocks."""
         self._check_layer(layer_idx)
         if (
-            keys.ndim != 4 or keys.shape != values.shape or keys.shape[0] != 1
-            or keys.shape[1] != self.keys.shape[3] or keys.shape[3] != self.keys.shape[4]
+            keys.ndim != 4
+            or keys.shape != values.shape
+            or keys.shape[0] != 1
+            or keys.shape[1] != self.keys.shape[3]
+            or keys.shape[3] != self.keys.shape[4]
         ):
             raise ValueError("KV states must match the pool's head dimensions")
         blocks, offsets = self._slots(block_table, start, keys.shape[-2])
+        if any(block in self.block_manager.shared_blocks for block in blocks.unique().tolist()):
+            raise ValueError("Cannot write to a published shared KV block")
         self.keys[layer_idx, blocks, offsets] = keys[0].transpose(0, 1)
         self.values[layer_idx, blocks, offsets] = values[0].transpose(0, 1)
 
@@ -101,18 +115,27 @@ class _PagedLayer(CacheLayerMixin):
         shape = (*key_states.shape[:2], self.max_past + key_states.shape[-2], key_states.shape[-1])
         keys = key_states.new_zeros(shape)
         values = value_states.new_zeros(shape)
-        for row, (table, past, count) in enumerate(zip(
-            self.block_tables, self.past_lengths, self.chunk_lengths,
-        )):
+        for row, (table, past, count) in enumerate(
+            zip(
+                self.block_tables,
+                self.past_lengths,
+                self.chunk_lengths,
+            )
+        ):
             # Padded query positions never consume physical KV slots.
             self.pool.write(
-                self.layer_idx, table, past,
-                key_states[row:row + 1, :, :count], value_states[row:row + 1, :, :count],
+                self.layer_idx,
+                table,
+                past,
+                key_states[row : row + 1, :, :count],
+                value_states[row : row + 1, :, :count],
             )
             previous = self.pool.read(self.layer_idx, table, 0, past)
             for dense, old, current in zip((keys, values), previous, (key_states, value_states)):
-                dense[row:row + 1, :, self.max_past - past:self.max_past] = old
-                dense[row:row + 1, :, self.max_past:self.max_past + count] = current[row:row + 1, :, :count]
+                dense[row : row + 1, :, self.max_past - past : self.max_past] = old
+                dense[row : row + 1, :, self.max_past : self.max_past + count] = current[
+                    row : row + 1, :, :count
+                ]
         self.updated = True
         # Dense inputs are temporary attention workspaces, never stored here.
         return keys, values
@@ -120,9 +143,12 @@ class _PagedLayer(CacheLayerMixin):
 
 class PagedBatchCache(Cache):
     """Model cache interface for a single batch over an external physical pool."""
+
     def __init__(self, pool, block_tables, past_lengths, chunk_lengths):
         block_tables = [list(table) for table in block_tables]
-        super().__init__(layers=[
-            _PagedLayer(pool, layer_idx, block_tables, past_lengths, chunk_lengths)
-            for layer_idx in range(pool.keys.shape[0])
-        ])
+        super().__init__(
+            layers=[
+                _PagedLayer(pool, layer_idx, block_tables, past_lengths, chunk_lengths)
+                for layer_idx in range(pool.keys.shape[0])
+            ]
+        )

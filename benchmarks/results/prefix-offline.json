@@ -1,0 +1,148 @@
+{
+  "environment": {
+    "python": "3.12.8",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "cpu": "AMD64 Family 23 Model 104 Stepping 1, AuthenticAMD",
+    "logical_cpus": 8,
+    "ram_bytes": 7866544128,
+    "torch": "2.15.0+cpu",
+    "transformers": "5.23.0",
+    "model": "in-memory GPT-2 (seed=17, 2 layers, width=24)",
+    "model_revision": "seed=17",
+    "dtype": "torch.float32",
+    "torch_threads": 1,
+    "block_size": 4,
+    "num_blocks": 256,
+    "max_batch_tokens": 128,
+    "iterations": 5,
+    "decoding": "greedy",
+    "loading_seconds_excluded": 0.018294300010893494
+  },
+  "records": [
+    {
+      "iteration": 0,
+      "mode": "cold",
+      "prompt_tokens": 65,
+      "cached_tokens": 0,
+      "actual_model_input_tokens": 65,
+      "prefill_seconds": 0.0026569999899948016,
+      "ttft_seconds": 0.0026569999899948016,
+      "cache_hit_rate": 0.0,
+      "output_verified": true
+    },
+    {
+      "iteration": 0,
+      "mode": "warm",
+      "prompt_tokens": 65,
+      "cached_tokens": 64,
+      "actual_model_input_tokens": 1,
+      "prefill_seconds": 0.0019068000110564753,
+      "ttft_seconds": 0.0019068000110564753,
+      "cache_hit_rate": 0.9846153846153847,
+      "output_verified": true
+    },
+    {
+      "iteration": 1,
+      "mode": "cold",
+      "prompt_tokens": 65,
+      "cached_tokens": 0,
+      "actual_model_input_tokens": 65,
+      "prefill_seconds": 0.0030762999958824366,
+      "ttft_seconds": 0.0030762999958824366,
+      "cache_hit_rate": 0.0,
+      "output_verified": true
+    },
+    {
+      "iteration": 1,
+      "mode": "warm",
+      "prompt_tokens": 65,
+      "cached_tokens": 64,
+      "actual_model_input_tokens": 1,
+      "prefill_seconds": 0.0018895999965025112,
+      "ttft_seconds": 0.0018895999965025112,
+      "cache_hit_rate": 0.9846153846153847,
+      "output_verified": true
+    },
+    {
+      "iteration": 2,
+      "mode": "cold",
+      "prompt_tokens": 65,
+      "cached_tokens": 0,
+      "actual_model_input_tokens": 65,
+      "prefill_seconds": 0.002788199999486096,
+      "ttft_seconds": 0.002788199999486096,
+      "cache_hit_rate": 0.0,
+      "output_verified": true
+    },
+    {
+      "iteration": 2,
+      "mode": "warm",
+      "prompt_tokens": 65,
+      "cached_tokens": 64,
+      "actual_model_input_tokens": 1,
+      "prefill_seconds": 0.0019961999933002517,
+      "ttft_seconds": 0.0019961999933002517,
+      "cache_hit_rate": 0.9846153846153847,
+      "output_verified": true
+    },
+    {
+      "iteration": 3,
+      "mode": "cold",
+      "prompt_tokens": 65,
+      "cached_tokens": 0,
+      "actual_model_input_tokens": 65,
+      "prefill_seconds": 0.0025941000058082864,
+      "ttft_seconds": 0.0025941000058082864,
+      "cache_hit_rate": 0.0,
+      "output_verified": true
+    },
+    {
+      "iteration": 3,
+      "mode": "warm",
+      "prompt_tokens": 65,
+      "cached_tokens": 64,
+      "actual_model_input_tokens": 1,
+      "prefill_seconds": 0.0018410000047879294,
+      "ttft_seconds": 0.0018410000047879294,
+      "cache_hit_rate": 0.9846153846153847,
+      "output_verified": true
+    },
+    {
+      "iteration": 4,
+      "mode": "cold",
+      "prompt_tokens": 65,
+      "cached_tokens": 0,
+      "actual_model_input_tokens": 65,
+      "prefill_seconds": 0.0024425000010523945,
+      "ttft_seconds": 0.0024425000010523945,
+      "cache_hit_rate": 0.0,
+      "output_verified": true
+    },
+    {
+      "iteration": 4,
+      "mode": "warm",
+      "prompt_tokens": 65,
+      "cached_tokens": 64,
+      "actual_model_input_tokens": 1,
+      "prefill_seconds": 0.001835399991250597,
+      "ttft_seconds": 0.001835399991250597,
+      "cache_hit_rate": 0.9846153846153847,
+      "output_verified": true
+    }
+  ],
+  "summary": {
+    "cold": {
+      "mean": 0.002711619998444803,
+      "median": 0.0026569999899948016,
+      "p50": 0.0026569999899948016,
+      "p95": 0.0030186799966031687
+    },
+    "warm": {
+      "mean": 0.001893799999379553,
+      "median": 0.0018895999965025112,
+      "p50": 0.0018895999965025112,
+      "p95": 0.0019783199968514964
+    }
+  },
+  "note": "Prefill/TTFT includes scheduler and first sampling; downloads/loading and warmup excluded. CPU speedup is not guaranteed."
+}

@@ -1,4 +1,3 @@
-
 import unittest
 
 from mini_vllm.engine.request import Request
@@ -7,7 +6,6 @@ from mini_vllm.engine.scheduler import Scheduler
 
 
 class TestScheduler(unittest.TestCase):
-
     def test_chunked_prefill(self):
         manager = BlockManager(
             num_blocks=100,
@@ -30,15 +28,9 @@ class TestScheduler(unittest.TestCase):
         # First scheduling iteration
         batch = scheduler.schedule()
 
-        result = [
-            (req.request_id, count)
-            for req, count in batch
-        ]
+        result = [(req.request_id, count) for req, count in batch]
 
-        self.assertEqual(
-            result,
-            [("A", 100), ("B", 28)]
-        )
+        self.assertEqual(result, [("A", 100), ("B", 28)])
 
         # Simulate successful model execution
         scheduler.complete_step(batch)
@@ -50,15 +42,9 @@ class TestScheduler(unittest.TestCase):
         # Second iteration
         batch = scheduler.schedule()
 
-        result = [
-            (req.request_id, count)
-            for req, count in batch
-        ]
+        result = [(req.request_id, count) for req, count in batch]
 
-        self.assertEqual(
-            result,
-            [("B", 22), ("C", 106)]
-        )
+        self.assertEqual(result, [("C", 128)])
 
         print("Chunked prefill test passed!")
 

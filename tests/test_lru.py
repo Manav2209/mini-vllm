@@ -1,4 +1,3 @@
-
 import unittest
 
 from mini_vllm.engine.block_manager import BlockManager
@@ -6,7 +5,6 @@ from mini_vllm.engine.prefix_cache import PrefixCache
 
 
 class TestLRU(unittest.TestCase):
-
     def test_eviction(self):
         manager = BlockManager(3, 4)
 
@@ -44,9 +42,7 @@ class TestLRU(unittest.TestCase):
         blocks, count = cache.lookup(tokens_b)
         self.assertEqual((blocks, count), ([], 0))
 
-        self.assertEqual(
-            cache.lookup(tokens_a)[1], 4
-        )
+        self.assertEqual(cache.lookup(tokens_a)[1], 4)
 
         manager.free([new_block])
 

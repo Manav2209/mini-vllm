@@ -1,5 +1,7 @@
-
 import torch
+from pathlib import Path
+
+from huggingface_hub import try_to_load_from_cache
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
 from .paged_cache import PagedBatchCache, PagedKVCache
@@ -9,17 +11,17 @@ class ModelRunner:
     def __init__(self, model_name="sshleifer/tiny-gpt2"):
         self.device = "cpu"
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name
-        )
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
         self.model.to(self.device)
         self.model.eval()
-    
+        self.revision = getattr(self.model.config, "_commit_hash", None)
+        if self.revision is None and not Path(model_name).is_dir():
+            cached_config = try_to_load_from_cache(model_name, "config.json")
+            if isinstance(cached_config, str):
+                self.revision = Path(cached_config).parent.name
 
     @torch.inference_mode()
     def forward_chunk(
@@ -57,7 +59,6 @@ class ModelRunner:
 
         return logits, outputs.past_key_values
 
-
     @torch.inference_mode()
     def prefill(self, prompt: str):
         inputs = self.tokenizer(
@@ -89,17 +90,18 @@ class ModelRunner:
 
         return next_token, outputs.past_key_values
 
-    
     def create_paged_cache(self, block_manager):
         config = self.model.config
         if getattr(config, "sliding_window", None) or getattr(config, "attention_chunk_size", None):
             raise ValueError("Paged KV execution currently requires full attention")
         num_heads = config.num_attention_heads
         return PagedKVCache(
-            block_manager, config.num_hidden_layers,
+            block_manager,
+            config.num_hidden_layers,
             getattr(config, "num_key_value_heads", num_heads),
             getattr(config, "head_dim", None) or config.hidden_size // num_heads,
-            dtype=next(self.model.parameters()).dtype, device=self.device,
+            dtype=next(self.model.parameters()).dtype,
+            device=self.device,
         )
 
     def _batch_inputs(self, sequences, past_lengths):
@@ -114,15 +116,20 @@ class ModelRunner:
             pad_id = 0
 
         input_ids = torch.full(
-            (batch_size, max_chunk), pad_id, dtype=torch.long, device=self.device,
+            (batch_size, max_chunk),
+            pad_id,
+            dtype=torch.long,
+            device=self.device,
         )
         attention_mask = torch.zeros(
-            (batch_size, max_past + max_chunk), dtype=torch.long, device=self.device,
+            (batch_size, max_past + max_chunk),
+            dtype=torch.long,
+            device=self.device,
         )
         position_ids = torch.zeros_like(input_ids)
         for row, (seq, past, length) in enumerate(zip(sequences, past_lengths, lengths)):
             input_ids[row, :length] = torch.tensor(seq, device=self.device)
-            attention_mask[row, max_past - past:max_past + length] = 1
+            attention_mask[row, max_past - past : max_past + length] = 1
             position_ids[row, :length] = torch.arange(past, past + length, device=self.device)
         return input_ids, attention_mask, position_ids
 
@@ -144,9 +151,14 @@ class ModelRunner:
         input_ids, attention_mask, position_ids = self._batch_inputs(sequences, past_lengths)
         cache = PagedBatchCache(pool, [req.block_ids for req in requests], past_lengths, lengths)
         outputs = self.model(
-            input_ids=input_ids, attention_mask=attention_mask,
-            position_ids=position_ids, past_key_values=cache, use_cache=True,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=cache,
+            use_cache=True,
         )
+        if not all(layer.updated for layer in cache.layers):
+            raise RuntimeError("Model did not write every KV layer")
         rows = torch.arange(len(sequences), device=self.device)
         last = torch.tensor(lengths, device=self.device) - 1
         return outputs.logits[rows, last, :]
@@ -182,8 +194,8 @@ class ModelRunner:
                 values = value.new_zeros(shape)
                 for row, (cache, past) in enumerate(zip(caches, past_lengths)):
                     if past:
-                        keys[row:row + 1, :, max_past - past:] = cache[layer_idx][0]
-                        values[row:row + 1, :, max_past - past:] = cache[layer_idx][1]
+                        keys[row : row + 1, :, max_past - past :] = cache[layer_idx][0]
+                        values[row : row + 1, :, max_past - past :] = cache[layer_idx][1]
                 packed.append((keys, values))
             batched_cache = DynamicCache(packed)
 
@@ -205,10 +217,13 @@ class ModelRunner:
             layers = []
             for layer in outputs.past_key_values.layers:
                 pair = tuple(
-                    torch.cat((
-                        tensor[row:row + 1, :, max_past - past:max_past],
-                        tensor[row:row + 1, :, max_past:max_past + length],
-                    ), dim=-2)
+                    torch.cat(
+                        (
+                            tensor[row : row + 1, :, max_past - past : max_past],
+                            tensor[row : row + 1, :, max_past : max_past + length],
+                        ),
+                        dim=-2,
+                    )
                     for tensor in (layer.keys, layer.values)
                 )
                 layers.append(pair)
@@ -264,4 +279,3 @@ class ModelRunner:
         )
 
         return outputs.logits[:, -1, :]
-

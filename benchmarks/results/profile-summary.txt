@@ -1,0 +1,43 @@
+Sat Nov 14 14:11:27 2026    benchmarks/results/serving-tiny-gpt2.prof
+
+         69707 function calls (66634 primitive calls) in 0.318 seconds
+
+   Ordered by: cumulative time
+   List reduced from 495 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   858/17    0.003    0.000    0.087    0.005 module.py:1791(_call_impl)
+    18/17    0.000    0.000    0.087    0.005 generic.py:937(wrapper)
+    18/17    0.000    0.000    0.086    0.005 modeling_gpt2.py:645(forward)
+   190/55    0.083    0.000    0.082    0.001 {method 'acquire' of '_thread.lock' objects}
+     15/9    0.000    0.000    0.061    0.007 threading.py:637(wait)
+     18/9    0.000    0.000    0.060    0.007 threading.py:323(wait)
+       29    0.000    0.000    0.057    0.002 linear.py:130(forward)
+       29    0.057    0.002    0.057    0.002 {built-in method torch._C._nn.linear}
+    21/20    0.000    0.000    0.050    0.003 generic.py:1019(wrapper)
+    21/20    0.000    0.000    0.050    0.002 output_capturing.py:326(wrapper)
+    21/20    0.000    0.000    0.048    0.002 modeling_gpt2.py:509(forward)
+    43/40    0.000    0.000    0.047    0.001 modeling_layers.py:88(forward_with_checkpointing)
+    43/40    0.001    0.000    0.046    0.001 modeling_gpt2.py:262(forward)
+    51/41    0.001    0.000    0.031    0.001 modeling_gpt2.py:144(forward)
+       29    0.023    0.001    0.023    0.001 {built-in method torch.argmax}
+      425    0.010    0.000    0.023    0.000 paged_cache.py:39(_slots)
+    51/41    0.000    0.000    0.023    0.001 cache_utils.py:1540(update)
+      170    0.007    0.000    0.023    0.000 paged_cache.py:58(write)
+    52/41    0.002    0.000    0.023    0.001 paged_cache.py:113(update)
+      170    0.001    0.000    0.016    0.000 paged_cache.py:76(read)
+       16    0.000    0.000    0.012    0.001 continuous_engine.py:70(add_request)
+       10    0.000    0.000    0.009    0.001 worker.py:232(_execute)
+       58    0.000    0.000    0.009    0.000 modeling_gpt2.py:238(forward)
+      670    0.001    0.000    0.008    0.000 prefix_cache.py:26(hash_block)
+      510    0.006    0.000    0.007    0.000 paged_cache.py:80(<genexpr>)
+      232    0.001    0.000    0.007    0.000 pytorch_utils.py:117(forward)
+       29    0.000    0.000    0.007    0.000 masking_utils.py:903(create_causal_mask)
+        8    0.000    0.000    0.006    0.001 worker.py:108(_submit)
+       24    0.000    0.000    0.006    0.000 tokenization_utils_base.py:2262(encode)
+       24    0.000    0.000    0.006    0.000 tokenization_utils_tokenizers.py:972(_encode_plus)
+       58    0.001    0.000    0.006    0.000 sdpa_attention.py:95(sdpa_attention_forward)
+       32    0.000    0.000    0.006    0.000 prefix_cache.py:48(compute_hashes)
+      615    0.005    0.000    0.005    0.000 {built-in method torch.arange}
+      671    0.001    0.000    0.005    0.000 __init__.py:183(dumps)
+       21    0.000    0.000    0.005    0.000 worker.py:140(_admit)

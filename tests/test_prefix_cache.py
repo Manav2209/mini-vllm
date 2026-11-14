@@ -1,15 +1,17 @@
-
 import unittest
 
 from mini_vllm.engine.prefix_cache import PrefixCache
+from mini_vllm.engine.block_manager import BlockManager
 
 
 class TestPrefixCache(unittest.TestCase):
-
     def setUp(self):
+        self.manager = BlockManager(16, 4)
+        self.manager.allocate(16)
         self.cache = PrefixCache(
             block_size=4,
             cache_namespace="test-model-v1",
+            block_manager=self.manager,
         )
 
     def test_identical_prefix(self):
@@ -33,14 +35,12 @@ class TestPrefixCache(unittest.TestCase):
         another = PrefixCache(
             block_size=4,
             cache_namespace="different-model",
+            block_manager=self.manager,
         )
 
         tokens = [10, 20, 30, 40]
 
-        assert (
-            self.cache.compute_hashes(tokens)
-            != another.compute_hashes(tokens)
-        )
+        assert self.cache.compute_hashes(tokens) != another.compute_hashes(tokens)
 
     def test_previous_context_matters(self):
         a = [1, 2, 3, 4, 9, 10, 11, 12]
@@ -51,11 +51,16 @@ class TestPrefixCache(unittest.TestCase):
 
         assert hashes_a[1] != hashes_b[1]
 
-        
     def test_prefix_lookup(self):
         tokens_a = [
-            10, 20, 30, 40,
-            50, 60, 70, 80,
+            10,
+            20,
+            30,
+            40,
+            50,
+            60,
+            70,
+            80,
         ]
 
         hashes = self.cache.compute_hashes(tokens_a)
@@ -66,9 +71,18 @@ class TestPrefixCache(unittest.TestCase):
         self.cache.register_block(hashes[1], 7)
 
         tokens_b = [
-            10, 20, 30, 40,
-            50, 60, 70, 80,
-            90, 100, 110, 120,
+            10,
+            20,
+            30,
+            40,
+            50,
+            60,
+            70,
+            80,
+            90,
+            100,
+            110,
+            120,
         ]
 
         blocks, cached_tokens = self.cache.lookup(tokens_b)
@@ -76,12 +90,20 @@ class TestPrefixCache(unittest.TestCase):
         self.assertEqual(blocks, [3, 7])
         self.assertEqual(cached_tokens, 8)
 
-
     def test_lookup_stops_on_missing_block(self):
         tokens = [
-            1, 2, 3, 4,
-            5, 6, 7, 8,
-            9, 10, 11, 12,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
         ]
 
         hashes = self.cache.compute_hashes(tokens)
@@ -95,7 +117,6 @@ class TestPrefixCache(unittest.TestCase):
 
         self.assertEqual(blocks, [2])
         self.assertEqual(count, 4)
-
 
     def test_unregister_block(self):
         tokens = [1, 2, 3, 4]
@@ -111,7 +132,5 @@ class TestPrefixCache(unittest.TestCase):
         self.assertEqual(count, 0)
 
 
-
 if __name__ == "__main__":
     unittest.main()
-

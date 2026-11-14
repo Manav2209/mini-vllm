@@ -1,56 +1,21 @@
-
 import unittest
+from unittest.mock import patch
 
-from mini_vllm.engine.continuous_engine import (
-    ContinuousBatchEngine,
-)
+from mini_vllm.engine.continuous_engine import ContinuousBatchEngine
+from mini_vllm.testing import tiny_runner
 
 
 class TestPrefixIntegration(unittest.TestCase):
-
-    def test_prefix_reuse(self):
-        engine = ContinuousBatchEngine(
-            model_name="sshleifer/tiny-gpt2",
-            num_blocks=128,
-            block_size=4,
-        )
-
-        prompt_a = (
-            "Python is a programming language "
-            "used for machine learning and web development."
-        )
-
-        prompt_b = (
-            "Python is a programming language "
-            "used for machine learning and data analysis."
-        )
-
-        engine.add_request("A", prompt_a, max_tokens=5)
-
-        while "A" in engine.requests:
+    def test_real_work_skipped(self):
+        engine = ContinuousBatchEngine(runner=tiny_runner(), block_size=4, num_blocks=32)
+        engine.add_request("cold", "1 2 3 4 5 6 7 8 9", 1)
+        engine.step()
+        engine.add_request("warm", "1 2 3 4 5 6 7 8 10", 1)
+        cached = engine.requests["warm"].num_cached_tokens
+        self.assertEqual(cached, 8)
+        with patch.object(
+            engine.runner, "forward_paged_batch", wraps=engine.runner.forward_paged_batch
+        ) as forward:
             engine.step()
-
-        # Request B should find cached prefix blocks.
-        engine.add_request("B", prompt_b, max_tokens=5)
-
-        req_b = engine.requests["B"]
-
-        self.assertGreater(req_b.num_cached_tokens, 0)
-        self.assertEqual(
-            req_b.num_computed_tokens,
-            req_b.num_cached_tokens,
-        )
-
-        print(
-            "Cached tokens:",
-            req_b.num_cached_tokens,
-        )
-
-        while "B" in engine.requests:
-            engine.step()
-
-        self.assertIn("B", engine.results)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(sum(map(len, forward.call_args.args[0])), 9 - cached)
+        self.assertEqual(engine.forward_tokens, 10)

@@ -1,3 +1,4 @@
+"""Legacy single-request example. ContinuousBatchEngine is the supported path."""
 
 import torch
 
@@ -12,8 +13,9 @@ class LLMEngine:
         self,
         model_name="sshleifer/tiny-gpt2",
         max_batch_tokens=16,
+        runner=None,
     ):
-        self.runner = ModelRunner(model_name)
+        self.runner = runner if runner is not None else ModelRunner(model_name)
 
         self.block_manager = BlockManager(
             num_blocks=1024,
@@ -32,7 +34,6 @@ class LLMEngine:
         max_tokens: int = 20,
         verbose: bool = False,
     ) -> str:
-
         if max_tokens <= 0:
             return ""
 
@@ -46,7 +47,6 @@ class LLMEngine:
 
         try:
             while len(request.output_tokens) < max_tokens:
-
                 batch = self.scheduler.schedule()
 
                 if not batch:
@@ -61,7 +61,9 @@ class LLMEngine:
 
                 # Execute the selected chunk
                 logits = self.runner.forward_paged_batch(
-                    [chunk], [req], self.kv_cache,
+                    [chunk],
+                    [req],
+                    self.kv_cache,
                 )
 
                 # Update progress after execution

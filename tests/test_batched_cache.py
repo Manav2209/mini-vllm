@@ -1,4 +1,5 @@
 """Offline model tests: cached batches must match independent full-prefix forwards."""
+
 import unittest
 from unittest.mock import patch
 
@@ -26,10 +27,17 @@ class BatchedCacheTests(unittest.TestCase):
     def setUpClass(cls):
         with torch.random.fork_rng():
             torch.manual_seed(17)
-            cls.model = GPT2LMHeadModel(GPT2Config(
-                vocab_size=97, n_positions=64, n_embd=24, n_layer=2, n_head=2,
-                bos_token_id=0, eos_token_id=None,
-            )).eval()
+            cls.model = GPT2LMHeadModel(
+                GPT2Config(
+                    vocab_size=97,
+                    n_positions=64,
+                    n_embd=24,
+                    n_layer=2,
+                    n_head=2,
+                    bos_token_id=0,
+                    eos_token_id=None,
+                )
+            ).eval()
 
     def setUp(self):
         self.runner = ModelRunner.__new__(ModelRunner)
@@ -63,14 +71,22 @@ class BatchedCacheTests(unittest.TestCase):
             logits, updated = self.runner.forward_cached_batch(chunks, [caches[0], None, caches[2]])
             self.assertEqual(forward.call_count, 1)
             self.assertEqual(tuple(forward.call_args.kwargs["input_ids"].shape), (3, 3))
-            self.assertEqual(forward.call_args.kwargs["position_ids"].tolist(), [
-                [3, 0, 0], [0, 1, 2], [5, 6, 0],
-            ])
-            self.assertEqual(forward.call_args.kwargs["attention_mask"].tolist(), [
-                [0, 0, 1, 1, 1, 1, 0, 0],
-                [0, 0, 0, 0, 0, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 0],
-            ])
+            self.assertEqual(
+                forward.call_args.kwargs["position_ids"].tolist(),
+                [
+                    [3, 0, 0],
+                    [0, 1, 2],
+                    [5, 6, 0],
+                ],
+            )
+            self.assertEqual(
+                forward.call_args.kwargs["attention_mask"].tolist(),
+                [
+                    [0, 0, 1, 1, 1, 1, 0, 0],
+                    [0, 0, 0, 0, 0, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 0],
+                ],
+            )
         full = [prefixes[0] + chunks[0], chunks[1], prefixes[2] + chunks[2]]
         self.assert_matches_full_prefixes(logits, updated, full)
         for cache, saved in zip(caches, original):
@@ -80,7 +96,9 @@ class BatchedCacheTests(unittest.TestCase):
 
         # Remove a finished row and reorder the survivors before decoding.
         with patch.object(self.model, "forward", wraps=self.model.forward) as forward:
-            logits, caches = self.runner.forward_cached_batch([[19], [20]], [updated[2], updated[0]])
+            logits, caches = self.runner.forward_cached_batch(
+                [[19], [20]], [updated[2], updated[0]]
+            )
             self.assertEqual(forward.call_count, 1)
             self.assertEqual(tuple(forward.call_args.kwargs["input_ids"].shape), (2, 1))
         self.assert_matches_full_prefixes(logits, caches, [full[2] + [19], full[0] + [20]])
@@ -95,7 +113,9 @@ class BatchedCacheTests(unittest.TestCase):
         tokens = self.runner.tokenizer.encode(prompt)
         generated = []
         for _ in range(count):
-            token = int(self.model(input_ids=torch.tensor([tokens]), use_cache=False).logits[0, -1].argmax())
+            token = int(
+                self.model(input_ids=torch.tensor([tokens]), use_cache=False).logits[0, -1].argmax()
+            )
             tokens.append(token)
             generated.append(token)
         return self.runner.tokenizer.decode(generated)
@@ -111,7 +131,9 @@ class BatchedCacheTests(unittest.TestCase):
                     engine = engine_type(hf_runner, token_budget=4)
                     add = engine.add_request
                 else:
-                    with patch("mini_vllm.engine.continuous_engine.ModelRunner", return_value=self.runner):
+                    with patch(
+                        "mini_vllm.engine.continuous_engine.ModelRunner", return_value=self.runner
+                    ):
                         engine = engine_type()
                     engine.scheduler.max_batch_tokens = 4
                     add = engine.add_request

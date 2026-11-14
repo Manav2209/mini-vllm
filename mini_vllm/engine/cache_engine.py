@@ -1,4 +1,8 @@
-"""Continuous batching with per-request KV caches and one forward per step."""
+"""Legacy/reference engine retained for comparison tests.
+
+Use ContinuousBatchEngine for supported inference and HTTP serving.
+"""
+
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
@@ -69,7 +73,7 @@ class CachedContinuousEngine:
             # Each request gets at most one chunk per step.
             is_prefill = req.computed < req.prompt_len
             amount = min(pending, remaining_budget) if is_prefill else 1
-            token_chunk = req.token_ids[req.computed:req.computed + amount]
+            token_chunk = req.token_ids[req.computed : req.computed + amount]
             batch.append((req, amount, token_chunk))
             remaining_budget -= amount
 
@@ -104,8 +108,9 @@ class CachedContinuousEngine:
             req.token_ids.append(int(prediction))
             emitted[req.request_id] = int(prediction)
 
-            finished = (len(req.generated) >= req.max_new_tokens or
-                        prediction == self.runner.eos_token_id)
+            finished = (
+                len(req.generated) >= req.max_new_tokens or prediction == self.runner.eos_token_id
+            )
             if finished:
                 self.results[req.request_id] = self.runner.decode(req.generated)
                 release = getattr(self.runner, "release_cache", None)
@@ -120,6 +125,7 @@ class CachedContinuousEngine:
 
 class HFRunner:
     """Hugging Face model using our physical KV pool and block tables."""
+
     def __init__(self, model_name: str = "sshleifer/tiny-gpt2", num_blocks=1024, block_size=16):
         from .model_runner import ModelRunner
         from .block_manager import BlockManager

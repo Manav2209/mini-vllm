@@ -3,6 +3,7 @@ import json
 from .block_manager import BlockManager
 from collections import OrderedDict
 
+
 class PrefixCache:
     def __init__(
         self,
@@ -23,7 +24,7 @@ class PrefixCache:
         self.block_to_hash: dict[int, str] = {}
 
     def hash_block(
-        self ,
+        self,
         previous_hash: str,
         token_ids: list[int],
     ) -> str:
@@ -48,13 +49,10 @@ class PrefixCache:
         self,
         token_ids: list[int],
     ) -> list[str]:
-
         hashes = []
         previous_hash = "ROOT"
 
-        num_full_blocks = (
-            len(token_ids) // self.block_size
-        )
+        num_full_blocks = len(token_ids) // self.block_size
 
         for i in range(num_full_blocks):
             start = i * self.block_size
@@ -76,14 +74,13 @@ class PrefixCache:
         self,
         block_hash: str,
         block_id: int,
-    ) -> None:
-
+    ) -> int:
         existing = self.hash_to_block.get(block_hash)
 
         if existing is not None:
-            if existing != block_id:
-                raise ValueError("Hash already registered")
-            return
+            # Keep one canonical copy. The caller still owns its private copy.
+            self._touch(block_hash)
+            return existing
 
         if block_id in self.block_to_hash:
             raise ValueError("Block already cached")
@@ -93,8 +90,9 @@ class PrefixCache:
 
         self.hash_to_block[block_hash] = block_id
         self.block_to_hash[block_id] = block_hash
-
-
+        self.block_manager.shared_blocks.add(block_id)
+        self._touch(block_hash)
+        return block_id
 
     def lookup(
         self,
@@ -118,6 +116,7 @@ class PrefixCache:
                 break
 
             block_ids.append(block_id)
+            self._touch(block_hash)
 
         cached_tokens = len(block_ids) * self.block_size
 
@@ -132,6 +131,7 @@ class PrefixCache:
             return
         self.hash_to_block.pop(block_hash, None)
         self.lru.pop(block_hash, None)
+        self.block_manager.shared_blocks.discard(block_id)
         # Release the cache-retention reference.
         self.block_manager.free([block_id])
 
@@ -147,7 +147,6 @@ class PrefixCache:
             self._touch(block_hash)
         return block_ids, cached_tokens
 
-
     def _touch(self, block_hash: str) -> None:
         """
         Mark a cached block as recently used.
@@ -157,7 +156,6 @@ class PrefixCache:
         else:
             self.lru[block_hash] = None
 
-    
     def evict(self, num_blocks: int = 1) -> list[int]:
         """
         Evict up to num_blocks cached entries.
@@ -187,6 +185,3 @@ class PrefixCache:
             evicted.append(block_id)
 
         return evicted
-
-
-

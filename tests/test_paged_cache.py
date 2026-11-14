@@ -1,4 +1,5 @@
 """Physical KV storage, address translation, and model-level reuse checks."""
+
 import unittest
 from unittest.mock import patch
 
@@ -25,9 +26,16 @@ class PhysicalKVTests(unittest.TestCase):
         keys = torch.arange(30, dtype=torch.float32).reshape(1, 2, 5, 3)
         values = keys + 100
         pool.write(0, table, 0, keys, values)
-        self.assertEqual([pool.physical_slot(table, p) for p in range(5)], [
-            (2, 0), (2, 1), (0, 0), (0, 1), (1, 0),
-        ])
+        self.assertEqual(
+            [pool.physical_slot(table, p) for p in range(5)],
+            [
+                (2, 0),
+                (2, 1),
+                (0, 0),
+                (0, 1),
+                (1, 0),
+            ],
+        )
         for token in range(5):
             block, offset = pool.physical_slot(table, token)
             torch.testing.assert_close(pool.keys[0, block, offset], keys[0, :, token])
@@ -94,10 +102,17 @@ class PagedModelTests(unittest.TestCase):
     def setUpClass(cls):
         with torch.random.fork_rng():
             torch.manual_seed(23)
-            cls.model = GPT2LMHeadModel(GPT2Config(
-                vocab_size=97, n_positions=64, n_embd=24, n_layer=2, n_head=2,
-                bos_token_id=0, eos_token_id=None,
-            )).eval()
+            cls.model = GPT2LMHeadModel(
+                GPT2Config(
+                    vocab_size=97,
+                    n_positions=64,
+                    n_embd=24,
+                    n_layer=2,
+                    n_head=2,
+                    bos_token_id=0,
+                    eos_token_id=None,
+                )
+            ).eval()
 
     def setUp(self):
         self.runner = ModelRunner.__new__(ModelRunner)
@@ -130,7 +145,9 @@ class PagedModelTests(unittest.TestCase):
             self.assertEqual(forward.call_count, 1)
             cache = forward.call_args.kwargs["past_key_values"]
             self.assertIsInstance(cache, PagedBatchCache)
-            self.assertTrue(all(layer.keys is None and layer.values is None for layer in cache.layers))
+            self.assertTrue(
+                all(layer.keys is None and layer.values is None for layer in cache.layers)
+            )
         self.assert_matches_reference(logits, pool, [req_a, req_b], chunks)
         req_a.num_computed_tokens, req_b.num_computed_tokens = 3, 1
         a_prefix = pool.read(0, req_a.block_ids, 0, 3)
@@ -156,11 +173,20 @@ class PagedModelTests(unittest.TestCase):
         self.assertEqual(req_d.block_ids, released)
         # Reordered survivors and a fresh request share a forward over reused blocks.
         with patch.object(self.model, "forward", wraps=self.model.forward) as forward:
-            logits = self.runner.forward_paged_batch([[13], [11], [12]], [req_c, req_d, req_a], pool)
+            logits = self.runner.forward_paged_batch(
+                [[13], [11], [12]], [req_c, req_d, req_a], pool
+            )
             self.assertEqual(forward.call_count, 1)
-        self.assert_matches_reference(logits, pool, [req_c, req_d, req_a], [
-            prefixes[2] + [13], [11], prefixes[0] + [12],
-        ])
+        self.assert_matches_reference(
+            logits,
+            pool,
+            [req_c, req_d, req_a],
+            [
+                prefixes[2] + [13],
+                [11],
+                prefixes[0] + [12],
+            ],
+        )
         self.assertEqual((pool.keys.data_ptr(), pool.values.data_ptr()), pointers)
         for req in (req_a, req_c, req_d):
             manager.free(req.block_ids)
@@ -171,11 +197,15 @@ class PagedModelTests(unittest.TestCase):
         for engine_type in (ContinuousBatchEngine, CachedContinuousEngine):
             with self.subTest(engine=engine_type.__name__):
                 if engine_type is ContinuousBatchEngine:
-                    with patch("mini_vllm.engine.continuous_engine.ModelRunner", return_value=self.runner):
+                    with patch(
+                        "mini_vllm.engine.continuous_engine.ModelRunner", return_value=self.runner
+                    ):
                         engine = engine_type(num_blocks=2, block_size=2)
                     manager, pool = engine.block_manager, engine.kv_cache
                 else:
-                    with patch("mini_vllm.engine.model_runner.ModelRunner", return_value=self.runner):
+                    with patch(
+                        "mini_vllm.engine.model_runner.ModelRunner", return_value=self.runner
+                    ):
                         hf = HFRunner(num_blocks=2, block_size=2)
                     engine = engine_type(hf)
                     manager, pool = hf.block_manager, hf.kv_cache
@@ -190,6 +220,8 @@ class PagedModelTests(unittest.TestCase):
                     survivor = engine.requests["B"].cache
                     freed = set(range(2)) - set(survivor.block_ids)
                 self.assertIn("A", engine.results)
+                if engine_type is ContinuousBatchEngine:
+                    engine.prefix_cache.evict(2)
                 self.assertEqual(manager.num_free_blocks, 1)
                 engine.add_request("C", "4 5", 1)
                 with patch.object(self.model, "forward", wraps=self.model.forward) as forward:
@@ -200,12 +232,18 @@ class PagedModelTests(unittest.TestCase):
                 self.assertIn("C", engine.results)
                 engine.step()
                 self.assertFalse(engine.requests)
+                if engine_type is ContinuousBatchEngine:
+                    engine.prefix_cache.evict(2)
                 self.assertEqual(manager.num_free_blocks, 2)
                 self.assertEqual(pool.keys.data_ptr(), pointer)
                 # Reused storage produces the same output as fresh independent inference.
                 for name, prompt in (("A", [1, 2]), ("C", [4, 5])):
                     with torch.inference_mode():
-                        token = int(self.model(input_ids=torch.tensor([prompt]), use_cache=False).logits[0, -1].argmax())
+                        token = int(
+                            self.model(input_ids=torch.tensor([prompt]), use_cache=False)
+                            .logits[0, -1]
+                            .argmax()
+                        )
                     self.assertEqual(engine.results[name], str(token))
 
     def test_failed_forward_preserves_prefix_and_can_retry(self):
@@ -251,6 +289,7 @@ class PagedModelTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exhausted"):
             engine.step()
         engine.finish(engine.requests["long"])
+        engine.prefix_cache.evict(1)
         self.assertEqual(engine.block_manager.num_free_blocks, 1)
 
 

@@ -1,9 +1,8 @@
+from mini_vllm.testing import tiny_runner
 
-from mini_vllm.engine.model_runner import ModelRunner
+runner = tiny_runner()
 
-runner = ModelRunner()
-
-token, kv_cache = runner.prefill("Hello, my name is")
+token, kv_cache = runner.prefill("1 2 3 4 5")
 
 generated = [token.item()]
 

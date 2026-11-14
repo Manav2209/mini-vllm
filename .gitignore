@@ -1,3 +1,13 @@
 .venv/
 __pycache__/
 *.py[cod]
+spec/
+.runtime/
+.fresh/
+python-runtime.zip
+*.log
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+*.prof

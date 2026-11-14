@@ -1,14 +1,14 @@
-
 from mini_vllm.engine.continuous_engine import (
     ContinuousBatchEngine,
 )
+from mini_vllm.testing import tiny_runner
 
-engine = ContinuousBatchEngine()
+engine = ContinuousBatchEngine(runner=tiny_runner())
 
 # Request A arrives first.
 engine.add_request(
     "A",
-    "Explain what an operating system is.",
+    "1 2 3 4 5 6",
     max_tokens=12,
 )
 
@@ -19,7 +19,7 @@ for i in range(3):
 # Request B arrives while A is still active.
 engine.add_request(
     "B",
-    "What is a database?",
+    "7 8 9 10",
     max_tokens=8,
 )
 
@@ -40,4 +40,5 @@ for request_id, result in engine.results.items():
 
 assert "A" in engine.results
 assert "B" in engine.results
+engine.prefix_cache.evict(1024)
 assert engine.block_manager.num_free_blocks == 1024
