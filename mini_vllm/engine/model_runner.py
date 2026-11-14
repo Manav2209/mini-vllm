@@ -2,6 +2,8 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
+from .paged_cache import PagedBatchCache, PagedKVCache
+
 
 class ModelRunner:
     def __init__(self, model_name="sshleifer/tiny-gpt2"):
@@ -88,20 +90,20 @@ class ModelRunner:
         return next_token, outputs.past_key_values
 
     
-    @torch.inference_mode()
-    def forward_cached_batch(self, sequences, caches):
-        """Run uncached chunks together, retaining unpadded full-attention KV pairs.
+    def create_paged_cache(self, block_manager):
+        config = self.model.config
+        if getattr(config, "sliding_window", None) or getattr(config, "attention_chunk_size", None):
+            raise ValueError("Paged KV execution currently requires full attention")
+        num_heads = config.num_attention_heads
+        return PagedKVCache(
+            block_manager, config.num_hidden_layers,
+            getattr(config, "num_key_value_heads", num_heads),
+            getattr(config, "head_dim", None) or config.hidden_size // num_heads,
+            dtype=next(self.model.parameters()).dtype, device=self.device,
+        )
 
-        Each request cache is a tuple of (key, value) tensors per layer, with
-        shape [1, heads, processed_tokens, head_dim]. Input caches are not mutated.
-        """
-        if not sequences or any(not seq for seq in sequences):
-            raise ValueError("Sequences must be non-empty")
-        if len(sequences) != len(caches):
-            raise ValueError("Each sequence must have one cache entry")
-
+    def _batch_inputs(self, sequences, past_lengths):
         lengths = [len(seq) for seq in sequences]
-        past_lengths = [cache[0][0].shape[-2] if cache else 0 for cache in caches]
         max_past = max(past_lengths)
         max_chunk = max(lengths)
         batch_size = len(sequences)
@@ -122,6 +124,51 @@ class ModelRunner:
             input_ids[row, :length] = torch.tensor(seq, device=self.device)
             attention_mask[row, max_past - past:max_past + length] = 1
             position_ids[row, :length] = torch.arange(past, past + length, device=self.device)
+        return input_ids, attention_mask, position_ids
+
+    @torch.inference_mode()
+    def forward_paged_batch(self, sequences, requests, pool):
+        """Write new KV states directly to request blocks in one model forward.
+
+        Blocks must be reserved first. Computed-token counters are committed by
+        the caller only after success; retries overwrite the same uncommitted slots.
+        """
+        if not sequences or any(not seq for seq in sequences):
+            raise ValueError("Sequences must be non-empty")
+        if len(sequences) != len(requests):
+            raise ValueError("Each sequence must have one request")
+        lengths = [len(seq) for seq in sequences]
+        past_lengths = [req.num_computed_tokens for req in requests]
+        for req, past, count in zip(requests, past_lengths, lengths):
+            pool._slots(req.block_ids, 0, past + count)
+        input_ids, attention_mask, position_ids = self._batch_inputs(sequences, past_lengths)
+        cache = PagedBatchCache(pool, [req.block_ids for req in requests], past_lengths, lengths)
+        outputs = self.model(
+            input_ids=input_ids, attention_mask=attention_mask,
+            position_ids=position_ids, past_key_values=cache, use_cache=True,
+        )
+        rows = torch.arange(len(sequences), device=self.device)
+        last = torch.tensor(lengths, device=self.device) - 1
+        return outputs.logits[rows, last, :]
+
+    @torch.inference_mode()
+    def forward_cached_batch(self, sequences, caches):
+        """Run uncached chunks together, retaining unpadded full-attention KV pairs.
+
+        Reference dense implementation for comparisons with the paged path.
+        Each request cache is a tuple of (key, value) tensors per layer, with
+        shape [1, heads, processed_tokens, head_dim]. Input caches are not mutated.
+        """
+        if not sequences or any(not seq for seq in sequences):
+            raise ValueError("Sequences must be non-empty")
+        if len(sequences) != len(caches):
+            raise ValueError("Each sequence must have one cache entry")
+
+        lengths = [len(seq) for seq in sequences]
+        past_lengths = [cache[0][0].shape[-2] if cache else 0 for cache in caches]
+        max_past = max(past_lengths)
+        batch_size = len(sequences)
+        input_ids, attention_mask, position_ids = self._batch_inputs(sequences, past_lengths)
 
         # Align real past tokens at the right of a shared prefix. Current chunks
         # start after that prefix and are right-padded independently.

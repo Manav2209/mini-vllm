@@ -139,10 +139,10 @@ class BatchedCacheTests(unittest.TestCase):
                 self.assertEqual(engine.results, expected)
                 self.assertFalse(engine.requests)
                 if engine_type is ContinuousBatchEngine:
-                    self.assertFalse(engine.kv_caches)
                     self.assertEqual(engine.block_manager.num_free_blocks, 1024)
                 else:
                     self.assertFalse(engine.active)
+                    self.assertEqual(hf_runner.block_manager.num_free_blocks, 1024)
 
 
 if __name__ == "__main__":

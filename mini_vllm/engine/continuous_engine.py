@@ -8,12 +8,12 @@ from .model_runner import ModelRunner
 
 
 class ContinuousBatchEngine:
-    def __init__(self, model_name="sshleifer/tiny-gpt2"):
+    def __init__(self, model_name="sshleifer/tiny-gpt2", num_blocks=1024, block_size=16):
         self.runner = ModelRunner(model_name)
 
         self.block_manager = BlockManager(
-            num_blocks=1024,
-            block_size=16,
+            num_blocks=num_blocks,
+            block_size=block_size,
         )
 
         self.scheduler = Scheduler(
@@ -24,7 +24,7 @@ class ContinuousBatchEngine:
         self.requests = {}
         self.max_tokens = {}
         self.results = {}
-        self.kv_caches = {}
+        self.kv_cache = self.runner.create_paged_cache(self.block_manager)
 
     def add_request(
         self,
@@ -47,7 +47,6 @@ class ContinuousBatchEngine:
 
         self.requests[request_id] = req
         self.max_tokens[request_id] = max_tokens
-        self.kv_caches[request_id] = None
 
         self.scheduler.add_request(req)
 
@@ -55,6 +54,8 @@ class ContinuousBatchEngine:
         batch = self.scheduler.schedule()
 
         if not batch:
+            if self.requests:
+                raise RuntimeError("No schedulable tokens: KV block pool is exhausted")
             return {}
 
         # Build the input sequences selected by scheduler.
@@ -66,9 +67,8 @@ class ContinuousBatchEngine:
             sequences.append(req.token_ids[req.num_computed_tokens:end])
 
         # One model forward call for the entire batch.
-        logits, caches = self.runner.forward_cached_batch(
-            sequences,
-            [self.kv_caches[req.request_id] for req, _ in batch],
+        logits = self.runner.forward_paged_batch(
+            sequences, [req for req, _ in batch], self.kv_cache,
         )
 
         # Only commit after successful execution.
@@ -78,8 +78,7 @@ class ContinuousBatchEngine:
 
         generated = {}
 
-        for (req, count), token_id, cache in zip(batch, sampled, caches):
-            self.kv_caches[req.request_id] = cache
+        for (req, count), token_id in zip(batch, sampled):
 
             # Don't sample during incomplete prefill.
             if req.num_computed_tokens < req.prompt_len:
@@ -115,4 +114,3 @@ class ContinuousBatchEngine:
 
         del self.requests[req.request_id]
         del self.max_tokens[req.request_id]
-        del self.kv_caches[req.request_id]

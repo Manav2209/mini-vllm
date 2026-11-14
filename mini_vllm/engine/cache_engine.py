@@ -108,22 +108,28 @@ class CachedContinuousEngine:
                         prediction == self.runner.eos_token_id)
             if finished:
                 self.results[req.request_id] = self.runner.decode(req.generated)
+                release = getattr(self.runner, "release_cache", None)
+                if release is not None:
+                    release(req.cache)
                 del self.requests[req.request_id]
-                req.cache = None   # release the request's HF cache
+                req.cache = None
             else:
                 self.active.append(req)
         return emitted
 
 
 class HFRunner:
-    """Hugging Face CPU runner with padded batched KV execution."""
-    def __init__(self, model_name: str = "sshleifer/tiny-gpt2"):
+    """Hugging Face model using our physical KV pool and block tables."""
+    def __init__(self, model_name: str = "sshleifer/tiny-gpt2", num_blocks=1024, block_size=16):
         from .model_runner import ModelRunner
+        from .block_manager import BlockManager
 
         self.runner = ModelRunner(model_name)
         self.tokenizer = self.runner.tokenizer
         self.model = self.runner.model
         self.eos_token_id = self.tokenizer.eos_token_id
+        self.block_manager = BlockManager(num_blocks, block_size)
+        self.kv_cache = self.runner.create_paged_cache(self.block_manager)
 
     def encode(self, prompt):
         return self.tokenizer.encode(prompt)
@@ -135,6 +141,28 @@ class HFRunner:
         return self.forward_batch([token_ids], [cache])[0]
 
     def forward_batch(self, chunks, caches):
-        logits, updated_caches = self.runner.forward_cached_batch(chunks, caches)
+        from .request import Request
+
+        if not chunks or len(chunks) != len(caches) or any(not chunk for chunk in chunks):
+            raise ValueError("Each non-empty chunk must have one cache entry")
+        requests = [cache if cache is not None else Request("", []) for cache in caches]
+        original_blocks = [len(req.block_ids) for req in requests]
+        try:
+            for req, chunk in zip(requests, chunks):
+                self.block_manager.reserve_for(req, req.num_computed_tokens + len(chunk))
+            logits = self.runner.forward_paged_batch(chunks, requests, self.kv_cache)
+        except Exception:
+            # Preserve committed prefixes and return only this attempt's new blocks.
+            for req, count in zip(requests, original_blocks):
+                self.block_manager.free(req.block_ids[count:])
+                del req.block_ids[count:]
+            raise
         tokens = logits.argmax(dim=-1).tolist()
-        return list(zip(tokens, updated_caches))
+        for req, chunk in zip(requests, chunks):
+            req.num_computed_tokens += len(chunk)
+        return list(zip(tokens, requests))
+
+    def release_cache(self, request):
+        self.block_manager.free(request.block_ids)
+        request.block_ids.clear()
+        request.num_computed_tokens = 0

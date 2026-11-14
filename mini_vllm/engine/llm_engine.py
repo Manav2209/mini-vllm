@@ -24,6 +24,7 @@ class LLMEngine:
             block_manager=self.block_manager,
             max_batch_tokens=max_batch_tokens,
         )
+        self.kv_cache = self.runner.create_paged_cache(self.block_manager)
 
     def generate(
         self,
@@ -43,8 +44,6 @@ class LLMEngine:
         request = Request("req-1", prompt_ids)
         self.scheduler.add_request(request)
 
-        kv_cache = None
-
         try:
             while len(request.output_tokens) < max_tokens:
 
@@ -61,10 +60,8 @@ class LLMEngine:
                 chunk = req.token_ids[start:end]
 
                 # Execute the selected chunk
-                logits, kv_cache = self.runner.forward_chunk(
-                    token_ids=chunk,
-                    past_key_values=kv_cache,
-                    previous_tokens=start,
+                logits = self.runner.forward_paged_batch(
+                    [chunk], [req], self.kv_cache,
                 )
 
                 # Update progress after execution
