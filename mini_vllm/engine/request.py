@@ -12,6 +12,7 @@ class Request:
         self.token_ids = list(prompt_tokens)
 
         self.num_computed_tokens = 0
+        self.num_cached_tokens = 0
         self.block_ids: list[int] = []
         
 
